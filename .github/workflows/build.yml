@@ -34,8 +34,8 @@ jobs:
       
       - name: Install needed dependencies
         run: |
-          apt update
-          apt install -y git binutils-dev libcurl4-openssl-dev zlib1g-dev libdw-dev libiberty-dev cmake gcc g++ python docker.io protobuf-compiler libssl-dev pkg-config clang llvm
+          sudo apt update
+          sudo apt install -y git binutils-dev libcurl4-openssl-dev zlib1g-dev libdw-dev libiberty-dev cmake gcc g++ python docker.io protobuf-compiler libssl-dev pkg-config clang llvm
 
       # Runs a set of commands using the runners shell
       - name: Build NearCore
