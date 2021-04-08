@@ -1,0 +1,90 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+# Controls when the action will run. 
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      nearcore_checkout:
+        description: 'nearcore checkout (branch,tag, commit)'     
+        required: false
+        default: 'master'
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    name: "Build (${{ github.event.inputs.nearcore_checkout }})"
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      
+      - name: Setup rust environment
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            override: true
+            # components: rustfmt, clippy
+      
+      - name: Install needed dependencies
+        run: |
+          apt update
+          apt install -y git binutils-dev libcurl4-openssl-dev zlib1g-dev libdw-dev libiberty-dev cmake gcc g++ python docker.io protobuf-compiler libssl-dev pkg-config clang llvm
+
+      # Runs a set of commands using the runners shell
+      - name: Build NearCore
+        id: nearcore_build
+        run: |
+          # temporary hack
+          GOPATH="/home/runner/go"
+          
+          # checkout nearcore
+          git clone https://github.com/near/nearcore.git
+          cd nearcore
+          
+          # checkout branch/tag/commit
+          git checkout ${{ github.event.inputs.nearcore_checkout }}
+          
+          # build nearcore
+          cargo build -p neard --release
+          
+          # save version output
+          target/release/neard --version > ${HOME}/version.md
+          
+          # create binaries archive
+          VERSION=$(target/release/neard --version | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+")
+          tar -czvf ${HOME}/nearcore-${VERSION}.tar.gz target/release/*
+          
+          # set outputs
+          echo "::set-output name=version::${VERSION}"
+          echo "::set-output name=release_file::${HOME}/nearcore-${VERSION}.tar.gz"
+          echo "::set-output name=release_file_name::nearcore-${VERSION}.tar.gz"
+          echo "::set-output name=release_body::${HOME}/version.md"
+          
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "v${{ steps.nearcore_build.outputs.version }}"
+          release_name: "v${{ steps.nearcore_build.outputs.version }}"
+          body_path: ${{ steps.nearcore_build.outputs.release_body }}
+          draft: false
+          prerelease: false
+      - name: Upload Release Asset
+        id: upload-release-asset 
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+          asset_path: ${{ steps.nearcore_build.outputs.release_file }}
+          asset_name: ${{ steps.nearcore_build.outputs.release_file_name }}
+          asset_content_type: application/gzip
